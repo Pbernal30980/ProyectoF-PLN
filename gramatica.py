@@ -54,7 +54,7 @@ gramatica = {
 
     "ADJETIVO": [
         ["rápido"], ["potente"], ["veloz"], ["eficiente"], 
-        ["que", "no", "se", "caliente"], ["fluido"], ["bueno"]
+        ["que", "no", "se", "caliente"], ["fluido"], ["bueno"], ["buen"]
     ],
 
     "USO_FINAL": [
@@ -117,6 +117,7 @@ lexico = {
     'potente': {'cat': 'adjetivo', 'num': 'sing', 'rendimiento': 'alto'}, 
     'potentes': {'cat': 'adjetivo', 'num': 'plur', 'rendimiento': 'alto'},
     'fluido': {'cat': 'adjetivo', 'gen': 'masc', 'num': 'sing', 'rendimiento': 'alto'},
+    'buen': {'cat': 'adjetivo', 'gen': 'masc', 'num': 'sing', 'calidad': 'buena'},
 
     # MARCAS Y ESPECIFICACIONES
     'xiaomi': {'cat': 'marca', 'valor': 'xiaomi'},
