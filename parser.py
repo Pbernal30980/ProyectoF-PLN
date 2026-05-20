@@ -1,36 +1,6 @@
-﻿import json
-from gramatica import gramatica, lexico
+﻿from gramatica import gramatica, lexico
 
-# Excepción personalizada
-class UnificationError(Exception):
-    pass
-
-
-class ParseResult:
-    def __init__(self, dags=None, errors=None, tokens_restantes=None):
-        self.dags = dags or []
-        self.errors = errors or []
-        self.tokens_restantes = tokens_restantes or []
-
-    @property
-    def ok(self):
-        return len(self.errors) == 0
-
-# Función de unificación
-def unificar(dag1, dag2):
-    resultado = dict(dag1)
-    for rasgo, valor in dag2.items():
-        if rasgo in resultado:
-            if isinstance(resultado[rasgo], dict) and isinstance(valor, dict):
-                sub = unificar(resultado[rasgo], valor)
-                if sub is None:
-                    return None
-                resultado[rasgo] = sub
-            elif resultado[rasgo] != valor:
-                return None
-        else:
-            resultado[rasgo] = valor
-    return resultado
+# FUNCIONES DE UTILIDAD LÉXICA Y UNIFICACIÓN
 
 def obtener_definiciones(palabra):
     if palabra not in lexico:
@@ -38,267 +8,211 @@ def obtener_definiciones(palabra):
     defs = lexico[palabra]
     return defs if isinstance(defs, list) else [defs]
 
-# Lexer: Tokenización y preprocesamiento de palabras compuestas
-def lexer(oracion):
-    tokens_raw = oracion.lower().split()
-    tokens = []
-    pos = 0
-    while pos < len(tokens_raw):
-        # Fusiones posibles de lexer
-        if pos + 1 < len(tokens_raw):
-            if tokens_raw[pos] == "gama" and tokens_raw[pos + 1] in ["alta", "media", "baja"]:
-                tokens.append(f"gama_{tokens_raw[pos + 1]}")
-                pos += 2
-                continue
-            if tokens_raw[pos] == "uso" and tokens_raw[pos + 1] == "diario":
-                tokens.append("uso_diario")
-                pos += 2
-                continue
-            if tokens_raw[pos] == "para" and tokens_raw[pos + 1] in ["jugar", "programar"]:
-                tokens.append(f"para_{tokens_raw[pos + 1]}")
-                pos += 2
-                continue
-            if tokens_raw[pos] == "para" and tokens_raw[pos + 1] == "uso" and pos + 2 < len(tokens_raw) and tokens_raw[pos + 2] == "diario":
-                tokens.append("para_uso_diario")
-                pos += 3
-                continue
-
-        tokens.append(tokens_raw[pos])
-        pos += 1
-    return tokens
-
-# ==== ABSTRACCIONES DEL PARSER ====
-
-def parse_intencion(tokens, pos):
-    if pos >= len(tokens):
-        return None, pos
-    palabra = tokens[pos]
-    defs = obtener_definiciones(palabra)
-    if defs and defs[0].get('cat') == 'intencion':
-        return defs[0], pos + 1
-    return None, pos
-
-
-def require_cat(palabra, categoria):
-    defs = obtener_definiciones(palabra)
-    if not defs:
-        raise UnificationError(f"Palabra no encontrada en el léxico: '{palabra}'")
-    if defs[0].get('cat') != categoria:
-        raise UnificationError(f"Se esperaba '{categoria}' y se encontró '{defs[0].get('cat')}' en '{palabra}'")
-    return defs
-
-def parse_requerimiento(tokens, pos):
-    if pos >= len(tokens):
-        raise UnificationError("Faltan palabras para completar el requerimiento")
-
-    palabra_1 = tokens[pos]
-    defs_1 = obtener_definiciones(palabra_1)
-    cat_1 = defs_1[0].get('cat') if defs_1 else None
-
-    # Caso 1: determinante o cantidad + sujeto
-    if cat_1 in ['art', 'cantidad']:
-        if pos + 1 >= len(tokens):
-            raise UnificationError("Faltan palabras para completar el requerimiento")
-
-        palabra_art = palabra_1
-        idx_sujeto = pos + 1
-        pre_mods = []
-
-        defs_posible_adj = obtener_definiciones(tokens[idx_sujeto])
-        if defs_posible_adj and defs_posible_adj[0].get('cat') == 'adjetivo':
-            pre_mods.append((tokens[idx_sujeto], defs_posible_adj[0]))
-            idx_sujeto += 1
-            if idx_sujeto >= len(tokens):
-                raise UnificationError("Falta el sujeto después del adjetivo")
-
-        palabra_sujeto = tokens[idx_sujeto]
-
-        defs_art = defs_1
-        defs_sujeto = [d for d in obtener_definiciones(palabra_sujeto) if d.get('cat') == 'sujeto']
-        if not defs_sujeto:
-            raise UnificationError(f"Se esperaba un sujeto y se encontró '{palabra_sujeto}'")
-
-        rasgos_art = defs_art[0]
-        opciones_requerimiento = []
-
-        for rasgos_sujeto in defs_sujeto:
-            concord_art = {'gen': rasgos_art.get('gen'), 'num': rasgos_art.get('num')}
-            concord_sujeto = {'gen': rasgos_sujeto.get('gen'), 'num': rasgos_sujeto.get('num')}
-
-            concordancia = unificar(concord_art, concord_sujeto)
-            if concordancia is None:
-                continue
-
-            for palabra_adj, rasgos_adj in pre_mods:
-                rasgos_mod = {}
-                if 'gen' in rasgos_adj:
-                    rasgos_mod['gen'] = rasgos_adj['gen']
-                if 'num' in rasgos_adj:
-                    rasgos_mod['num'] = rasgos_adj['num']
-                if rasgos_mod:
-                    if unificar(concordancia, rasgos_mod) is None:
-                        raise UnificationError(
-                            f"Error gramatical: no cuadra el género/número con el modificador '{palabra_adj}'"
-                        )
-
-            req = {
-                'cat': 'REQUERIMIENTO',
-                'articulo': palabra_art,
-                'sujeto': palabra_sujeto,
-                'rasgos_unificados': concordancia
-            }
-            if 'tipo' in rasgos_sujeto:
-                req['tipo_sujeto'] = rasgos_sujeto['tipo']
-            if 'subtipo' in rasgos_sujeto:
-                req['subtipo'] = rasgos_sujeto['subtipo']
-            if pre_mods:
-                req['MODIFICADORES'] = [
-                    {'tipo': 'adjetivo', 'valor': palabra, 'rasgos': rasgos}
-                    for palabra, rasgos in pre_mods
-                ]
-            opciones_requerimiento.append((req, concordancia))
-
-        if not opciones_requerimiento:
-            raise UnificationError(f"Error gramatical: no cuadra el género/número entre '{palabra_art}' y '{palabra_sujeto}'")
-
-        return opciones_requerimiento[0][0], opciones_requerimiento[0][1], idx_sujeto + 1
-
-    # Caso 2: sujeto sin determinante
-    palabra_sujeto = palabra_1
-    defs_sujeto = [d for d in obtener_definiciones(palabra_sujeto) if d.get('cat') == 'sujeto']
-    if not defs_sujeto:
-        raise UnificationError(f"Se esperaba un sujeto y se encontró '{palabra_sujeto}'")
-
-    rasgos_sujeto = defs_sujeto[0]
-    concordancia = {'gen': rasgos_sujeto.get('gen'), 'num': rasgos_sujeto.get('num')}
-
-    req = {
-        'cat': 'REQUERIMIENTO',
-        'sujeto': palabra_sujeto,
-        'rasgos_unificados': concordancia
-    }
-    if 'tipo' in rasgos_sujeto:
-        req['tipo_sujeto'] = rasgos_sujeto['tipo']
-    if 'subtipo' in rasgos_sujeto:
-        req['subtipo'] = rasgos_sujeto['subtipo']
-
-    return req, concordancia, pos + 1
-
-def parse_modificadores_y_complementos(tokens, pos, concordancia_base):
-    modificadores = []
-    complemento = None
-
-    while pos < len(tokens):
-        palabra = tokens[pos]
-        nexo = None
-        defs_nexo = obtener_definiciones(palabra)
-        if any(d.get('cat') in ['conjuncion', 'preposicion'] for d in defs_nexo):
-            nexo = palabra
-            pos += 1
-            if pos >= len(tokens):
-                break
-            palabra = tokens[pos]
-
-        if palabra.startswith('gama_'):
-            parts = palabra.split('_')
-            info_mod = {'tipo': 'gama', 'valor': f"gama {parts[1]}"}
-            if nexo:
-                info_mod['nexo'] = nexo
-            pos += 1
-            modificadores.append(info_mod)
+def unificar_rasgos(rasgos1, rasgos2):
+    """
+    Evalúa concordancia morfológica y rastrea las palabras exactas involucradas.
+    """
+    resultado = dict(rasgos1)
+    rasgos_estrictos = ['gen', 'num']
+    
+    origen1 = rasgos1.get('_origen', ['???'])
+    origen2 = rasgos2.get('_origen', ['???'])
+    
+    for rasgo, valor in rasgos2.items():
+        if rasgo == '_origen':
             continue
-
-        if palabra in ['uso_diario', 'para_jugar', 'para_programar', 'para_uso_diario']:
-            valor = palabra
-            if palabra.startswith('para_'):
-                valor = palabra.replace('para_', '')
-            complemento = {'tipo': 'complemento', 'valor': valor}
-            if nexo:
-                complemento['nexo'] = nexo
-            pos += 1
-            break
-
-        defs_palabra = obtener_definiciones(palabra)
-        if not defs_palabra:
-            break
-
-        mod = defs_palabra[0]
-        cat = mod.get('cat')
-
-        if cat in ['adjetivo', 'marca', 'especificacion']:
-            rasgos_mod = {}
-            if 'gen' in mod: rasgos_mod['gen'] = mod['gen']
-            if 'num' in mod: rasgos_mod['num'] = mod['num']
             
-            if rasgos_mod:
-                unificado = unificar(concordancia_base, rasgos_mod)
-                if unificado is None:
-                    raise UnificationError(f"Error gramatical: no cuadra el género/número con el modificador '{palabra}'")
+        if rasgo in rasgos_estrictos:
+            if rasgo in resultado and resultado[rasgo] != valor:
+                r1_str = " ".join([f"{k}:{v}" for k,v in rasgos1.items() if k not in ['cat', '_origen']])
+                r2_str = " ".join([f"{k}:{v}" for k,v in rasgos2.items() if k not in ['cat', '_origen']])
+                palabra1 = " ".join(origen1)
+                palabra2 = " ".join(origen2)
+                
+                error_msg = f"Discordancia en '{rasgo}': la(s) palabra(s) '{palabra1}' [{r1_str}] choca(n) con '{palabra2}' [{r2_str}]"
+                return None, error_msg
+            resultado[rasgo] = valor
+        elif rasgo not in resultado or rasgo == 'cat':
+            resultado[rasgo] = valor
             
-            info_mod = {'tipo': cat, 'valor': palabra, 'rasgos': mod}
-            if nexo:
-                info_mod['nexo'] = nexo
-            pos += 1
-            modificadores.append(info_mod)
+    resultado['_origen'] = origen1 + origen2
+    return resultado, None
+
+def lexer(oracion):
+    return oracion.lower().split()
+
+# PARSER ABSTRACTO (MÁQUINA RECURSIVA DCG)
+
+def parse_abstracto(simbolo, tokens, pos, tracker):
+    resultados = []
+    
+    if pos > tracker['max_pos']:
+        tracker['max_pos'] = pos
+        tracker['errores'].clear()
+
+    # CASO 1: Símbolo No-Terminal
+    if simbolo in gramatica:
+        for produccion in gramatica[simbolo]:
+            res_secuencia = parse_secuencia(produccion, tokens, pos, tracker)
             
-        elif cat in ['uso_final', 'juego']:
-            complemento = {'tipo': 'complemento', 'valor': palabra}
-            if nexo:
-                complemento['nexo'] = nexo
-            pos += 1
-            break
+            for arbol_hijos, rasgos_hijos, nueva_pos in res_secuencia:
+                nodo = {simbolo: arbol_hijos, '_rasgos_heredados': rasgos_hijos}
+                resultados.append((nodo, rasgos_hijos, nueva_pos))
+                
+    # CASO 2: Símbolo Terminal
+    elif pos < len(tokens):
+        token_actual = tokens[pos]
+        
+        if simbolo == token_actual:
+            defs_lexico = obtener_definiciones(token_actual)
+            if defs_lexico:
+                for def_lex in defs_lexico:
+                    rasgos = dict(def_lex)
+                    rasgos['_origen'] = [token_actual]
+                    hoja = {'terminal': token_actual, 'lexico': rasgos}
+                    resultados.append((hoja, rasgos, pos + 1))
+            else:
+                hoja = {'terminal': token_actual, 'lexico': {'_origen': [token_actual]}}
+                resultados.append((hoja, {'_origen': [token_actual]}, pos + 1))
+                
+    return resultados
+
+def parse_secuencia(produccion, tokens, pos, tracker):
+    if not produccion: 
+        return [([], {}, pos)]
+        
+    simbolo_actual = produccion[0]
+    resto_produccion = produccion[1:]
+    
+    resultados = []
+    res_simbolo = parse_abstracto(simbolo_actual, tokens, pos, tracker)
+    
+    for arbol_sim, rasgos_sim, pos_sim in res_simbolo:
+        res_resto = parse_secuencia(resto_produccion, tokens, pos_sim, tracker)
+        
+        for arbol_resto, rasgos_resto, pos_final in res_resto:
+            rasgos_unificados, error_unif = unificar_rasgos(rasgos_sim, rasgos_resto)
+            
+            if rasgos_unificados is not None:
+                nuevo_arbol = [arbol_sim] + arbol_resto
+                resultados.append((nuevo_arbol, rasgos_unificados, pos_final))
+            else:
+                if pos_final >= tracker['max_pos']:
+                    tracker['max_pos'] = pos_final
+                    tracker['errores'].add(error_unif)
+                
+    return resultados
+
+# GENERADOR DE ÁRBOL PARCIAL
+
+def obtener_arbol_parcial(tokens):
+    """Construye las partes del árbol que sí fueron válidas antes del fallo general."""
+    arbol_parcial = []
+    pos = 0
+    tracker_dummy = {'max_pos': 0, 'errores': set()}
+    
+    componentes = ['INTENCION', 'REQUERIMIENTO', 'COMPLEMENTO']
+    
+    for comp in componentes:
+        if pos >= len(tokens): break
+        res = parse_abstracto(comp, tokens, pos, tracker_dummy)
+        if res:
+            mejor = max(res, key=lambda x: x[2])
+            arbol_parcial.append(mejor[0])
+            pos = mejor[2]
         else:
             break
-
-    return modificadores, complemento, pos
-
-def parse_s(tokens):
-    print(f"\nAnalizando frase (Tokens): {tokens}")
-    pos = 0
-
-    try:
-        intencion, pos = parse_intencion(tokens, pos)
-        if intencion is None:
-            # Rebobinamos si no hay intencion y probamos directo desde requerimiento
-            pass
-        requerimiento, concordancia_base, pos = parse_requerimiento(tokens, pos)
-        modificadores, complemento, pos = parse_modificadores_y_complementos(tokens, pos, concordancia_base)
-        
-        if modificadores:
-            if 'MODIFICADORES' in requerimiento:
-                requerimiento['MODIFICADORES'].extend(modificadores)
-            else:
-                requerimiento['MODIFICADORES'] = modificadores
             
-        dag_resultado = {}
-        if intencion:
-            dag_resultado['INTENCION'] = intencion
-        dag_resultado['REQUERIMIENTO'] = requerimiento
+    return {'S (Arbol Parcial hasta el error)': arbol_parcial}, pos
+
+# ORQUESTADOR PRINCIPAl
+
+def parse_oracion(tokens):
+    # 1. PRE-VALIDACIÓN LÉXICA
+    for token in tokens:
+        esta_en_lexico = obtener_definiciones(token) != []
+        esta_en_gramatica = any(token in prod for prods in gramatica.values() for prod in prods)
         
-        if complemento:
-            dag_resultado['COMPLEMENTO'] = complemento
+        if not esta_en_lexico and not esta_en_gramatica:
+            print(f"[Error Lexico] La palabra '{token}' no existe en el diccionario ni en las reglas.")
+            return None
 
-        resultado = ParseResult(dags=[dag_resultado])
-        if pos < len(tokens):
-            resultado.tokens_restantes = tokens[pos:]
-        return resultado
+    # 2. ANÁLISIS SINTÁCTICO
+    tracker = {'max_pos': 0, 'errores': set()}
+    resultados_s = parse_abstracto('S', tokens, 0, tracker)
+    dags_validos = []
+    
+    for arbol, rasgos, pos_final in resultados_s:
+        if pos_final == len(tokens):
+            dags_validos.append(arbol)
+            
+    # 3. GESTIÓN DEL FALLO
+    if not dags_validos:
+        print("[Error Estructural o de Concordancia] detectado.\n")
+        
+        arbol_parcial, pos_alcanzada = obtener_arbol_parcial(tokens)
+        
+        print("--- ARBOL PARCIAL ALCANZADO ANTES DEL ERROR ---")
+        imprimir_arbol(arbol_parcial)
+        
+        tokens_sobrantes = tokens[pos_alcanzada:]
+        print(f"\n[!] Tokens sin procesar a partir del fallo: {tokens_sobrantes}\n")
+        
+        print("[MOTIVO DEL FALLO]:")
+        if tracker['errores']:
+            for err in tracker['errores']:
+                print(f"   > {err}")
+        else:
+            token_problematico = tokens[min(tracker['max_pos'], len(tokens)-1)]
+            print(f"   > La sintaxis se rompio al intentar procesar: '{token_problematico}'. " 
+                  "O faltan palabras, o la estructura gramatical no lo permite aqui.")
+                  
+        return None 
+    
+    return dags_validos
 
-    except UnificationError as e:
-        return ParseResult(errors=[str(e)])
+# IMPRESIÓN VISUAL DEL ÁRBOL
+
+def imprimir_arbol(nodo, prefijo="", es_ultimo=True, es_raiz=True):
+    marcador = "" if es_raiz else ("└── " if es_ultimo else "├── ")
+    
+    if isinstance(nodo, dict) and 'terminal' in nodo:
+        lex = nodo.get('lexico', {})
+        cat = lex.get('cat', 'Desconocido').upper()
+        rasgos_extra = ", ".join([f"{k}:{v}" for k, v in lex.items() if k not in ['cat', '_origen']])
+        info_rasgos = f" [{rasgos_extra}]" if rasgos_extra else ""
+        
+        print(f"{prefijo}{marcador}'{nodo['terminal']}' (Cat: {cat}){info_rasgos}")
+        return
+
+    if isinstance(nodo, dict):
+        llaves = [k for k in nodo.keys() if k != '_rasgos_heredados']
+        if not llaves: return
+        
+        simbolo = llaves[0]
+        hijos = nodo[simbolo]
+        
+        print(f"{prefijo}{marcador}{simbolo}")
+        
+        nuevo_prefijo = prefijo if es_raiz else prefijo + ("    " if es_ultimo else "│   ")
+        for i, hijo in enumerate(hijos):
+            imprimir_arbol(hijo, nuevo_prefijo, es_ultimo=(i == len(hijos) - 1), es_raiz=False)
 
 def analizar_oracion(oracion):
     tokens = lexer(oracion)
-    resultados = parse_s(tokens)
+    print(f"\n==============================================")
+    print(f"Frase: '{oracion}'")
+    print(f"Tokens: {tokens}")
+    print(f"==============================================")
+    
+    dags = parse_oracion(tokens)
 
-    if not resultados.ok:
-        print(f"Error: {resultados.errors[0]}")
-        return
+    if dags is None:
+        print("\nResultado devuelto a la consola: None")
+        return None
 
-    print(f"Árbol(es) resultante(s) DAG(s) encontrados: {len(resultados.dags)}")
-    for idx, dag in enumerate(resultados.dags, 1):
-        print(f"\n--- INTERPRETACIÓN {idx} ---")
-        print(json.dumps(dag, indent=2, ensure_ascii=False))
-
-    if resultados.tokens_restantes:
-        print(f"Tokens no procesados: {resultados.tokens_restantes}")
-
+    print(f"[EXITO] Arbol(es) valido(s) encontrado(s): {len(dags)}\n")
+    for idx, dag in enumerate(dags, 1):
+        print(f"--- INTERPRETACION {idx} ---")
+        imprimir_arbol(dag)
+        print()
