@@ -1,3 +1,6 @@
+import unicodedata
+import re
+
 
 gramatica = {
     # --- REGLAS PRINCIPALES ---
@@ -17,9 +20,11 @@ gramatica = {
         ["SUJETO", "MODIFICADORES"],
         ["ARTICULO", "SUJETO"],
         ["CANTIDAD", "SUJETO", "MODIFICADORES"],
-        ["CANTIDAD", "SUJETO"]
+        ["CANTIDAD", "SUJETO"],
+        ["ARTICULO", "ADJETIVO", "SUJETO", "MODIFICADORES"],
+        ["ARTICULO", "ADJETIVO", "SUJETO"]
     ],
-    # AQUÍ ESTABA EL ERROR: Faltaba agregar memoria, ram y almacenamiento como sujetos válidos
+
     "SUJETO": [
         ["teléfono"], ["celular"], ["móvil"], ["equipo"], ["dispositivo"], 
         ["procesador"], ["chip"], ["memoria"], ["ram"], ["almacenamiento"]
@@ -57,14 +62,16 @@ gramatica = {
         ["premium"], ["barato"], ["económico"], ["caro"]
     ],
     "ESPECIFICACION_TEC": [
-        ["snapdragon", "SERIE"], ["dimensity"], ["exynos"],
+        ["snapdragon"],
+        ["snapdragon", "SERIE"],
+        ["dimensity"], ["exynos"],
         ["RAM", "CANTIDAD"], ["ALMACENAMIENTO", "CANTIDAD"],
         ["ocho", "núcleos"], ["4nm"], ["nanómetros"],
         ["soporte", "magisk"], ["compatible", "con", "roms"]
     ],
     "ADJETIVO": [
         ["rápido"], ["potente"], ["veloz"], ["eficiente"], 
-        ["que", "no", "se", "caliente"], ["fluido"], ["bueno"], ["buen"]
+        ["fluido"], ["bueno"], ["buen"]
     ],
     
     # --- USOS Y SUB-COMPONENTES ---
@@ -78,62 +85,94 @@ gramatica = {
     "ALMACENAMIENTO": [["almacenamiento"], ["espacio"], ["rom"], ["memoria"]]
 }
 
-
 lexico = {
     # --- INTENCIONES ---
-    'busco': {'cat': 'intencion', 'accion': 'buscar'},
-    'busca': {'cat': 'intencion', 'accion': 'buscar'},
-    'quiero': {'cat': 'intencion', 'accion': 'querer'},
-    'necesito': {'cat': 'intencion', 'accion': 'necesitar'},
+    'busco':        {'cat': 'intencion', 'accion': 'buscar'},
+    'busca':        {'cat': 'intencion', 'accion': 'buscar'},
+    'quiero':       {'cat': 'intencion', 'accion': 'querer'},
+    'necesito':     {'cat': 'intencion', 'accion': 'necesitar'},
     'recomiéndame': {'cat': 'intencion', 'accion': 'recomendar'},
 
     # --- ARTÍCULOS ---
-    'un': {'cat': 'art', 'gen': 'masc', 'num': 'sing'},
-    'una': {'cat': 'art', 'gen': 'fem', 'num': 'sing'},
-    'el': {'cat': 'art', 'gen': 'masc', 'num': 'sing'},
-    'la': {'cat': 'art', 'gen': 'fem', 'num': 'sing'},
+    'un':    {'cat': 'art', 'gen': 'masc', 'num': 'sing'},
+    'una':   {'cat': 'art', 'gen': 'fem',  'num': 'sing'},
+    'el':    {'cat': 'art', 'gen': 'masc', 'num': 'sing'},
+    'la':    {'cat': 'art', 'gen': 'fem',  'num': 'sing'},
     'algún': {'cat': 'art', 'gen': 'masc', 'num': 'sing'},
 
     # --- CANTIDADES ---
-    'mucha': {'cat': 'cantidad', 'gen': 'fem', 'num': 'sing'},
-    'poca': {'cat': 'cantidad', 'gen': 'fem', 'num': 'sing'},
+    'mucha':    {'cat': 'cantidad', 'gen': 'fem',  'num': 'sing'},
+    'poca':     {'cat': 'cantidad', 'gen': 'fem',  'num': 'sing'},
     'bastante': {'cat': 'cantidad', 'gen': 'masc', 'num': 'sing'},
 
     # --- SUJETOS ---
-    'teléfono': {'cat': 'sujeto', 'gen': 'masc', 'num': 'sing', 'tipo': 'dispositivo'},
-    'celular': {'cat': 'sujeto', 'gen': 'masc', 'num': 'sing', 'tipo': 'dispositivo'},
-    'dispositivo': {'cat': 'sujeto', 'gen': 'masc', 'num': 'sing', 'tipo': 'dispositivo'},
+    'teléfono':   {'cat': 'sujeto', 'gen': 'masc', 'num': 'sing', 'tipo': 'dispositivo'},
+    'celular':    {'cat': 'sujeto', 'gen': 'masc', 'num': 'sing', 'tipo': 'dispositivo'},
+    'dispositivo':{'cat': 'sujeto', 'gen': 'masc', 'num': 'sing', 'tipo': 'dispositivo'},
     'procesador': {'cat': 'sujeto', 'gen': 'masc', 'num': 'sing', 'tipo': 'componente'},
+
+    'móvil':          {'cat': 'sujeto', 'gen': 'masc', 'num': 'sing', 'tipo': 'dispositivo'},
+    'equipo':         {'cat': 'sujeto', 'gen': 'masc', 'num': 'sing', 'tipo': 'dispositivo'},
+    'chip':           {'cat': 'sujeto', 'gen': 'masc', 'num': 'sing', 'tipo': 'componente'},
+    'ram':            {'cat': 'sujeto', 'gen': 'fem',  'num': 'sing', 'tipo': 'componente'},
+    'almacenamiento': {'cat': 'sujeto', 'gen': 'masc', 'num': 'sing', 'tipo': 'componente'},
+
+    'veloz':     {'cat': 'adjetivo', 'gen': 'inv',  'num': 'sing', 'rendimiento': 'alto'},
+    'eficiente': {'cat': 'adjetivo', 'gen': 'inv',  'num': 'sing', 'rendimiento': 'alto'},
+    'bueno':     {'cat': 'adjetivo', 'gen': 'masc', 'num': 'sing', 'calidad': 'buena'},
+
+    # memoria ya existía; se conserva con sus dos acepciones (RAM / Almacenamiento)
     'memoria': [
         {'cat': 'sujeto', 'gen': 'fem', 'num': 'sing', 'tipo': 'componente', 'subtipo': 'RAM'},
         {'cat': 'sujeto', 'gen': 'fem', 'num': 'sing', 'tipo': 'componente', 'subtipo': 'Almacenamiento'}
     ],
 
-    # --- ADJETIVOS ---
-    'rápido': {'cat': 'adjetivo', 'gen': 'masc', 'num': 'sing', 'rendimiento': 'alto'},
-    'rápida': {'cat': 'adjetivo', 'gen': 'fem', 'num': 'sing', 'rendimiento': 'alto'},
-    'potente': {'cat': 'adjetivo', 'num': 'sing', 'rendimiento': 'alto'}, 
-    'fluido': {'cat': 'adjetivo', 'gen': 'masc', 'num': 'sing', 'rendimiento': 'alto'},
-    'buen': {'cat': 'adjetivo', 'gen': 'masc', 'num': 'sing', 'calidad': 'buena'},
+    # --- ADJETIVOS (entradas previas, sin cambios) ---
+    'rápido':  {'cat': 'adjetivo', 'gen': 'masc', 'num': 'sing', 'rendimiento': 'alto'},
+    'rápida':  {'cat': 'adjetivo', 'gen': 'fem',  'num': 'sing', 'rendimiento': 'alto'},
+    'potente': {'cat': 'adjetivo', 'num': 'sing', 'rendimiento': 'alto'},
+    'fluido':  {'cat': 'adjetivo', 'gen': 'masc', 'num': 'sing', 'rendimiento': 'alto'},
+    'buen':    {'cat': 'adjetivo', 'gen': 'masc', 'num': 'sing', 'calidad': 'buena'},
 
     # --- MARCAS Y ESPECIFICACIONES ---
-    'xiaomi': {'cat': 'marca', 'valor': 'xiaomi'},
-    'samsung': {'cat': 'marca', 'valor': 'samsung'},
+    'xiaomi':     {'cat': 'marca', 'valor': 'xiaomi'},
+    'samsung':    {'cat': 'marca', 'valor': 'samsung'},
     'snapdragon': {'cat': 'especificacion', 'componente': 'procesador', 'marca': 'qualcomm'},
 
     # --- GAMAS ---
-    'gama': {'cat': 'gama'},
+    'gama':  {'cat': 'gama'},
     'media': {'cat': 'gama_valor', 'valor': 'media'},
-    'alta': {'cat': 'gama_valor', 'valor': 'alta'},
-    'baja': {'cat': 'gama_valor', 'valor': 'baja'},
+    'alta':  {'cat': 'gama_valor', 'valor': 'alta'},
+    'baja':  {'cat': 'gama_valor', 'valor': 'baja'},
 
     # --- USOS FINALES ---
-    'jugar': {'cat': 'uso_final', 'accion': 'jugar'},
-    'programar': {'cat': 'uso_final', 'accion': 'programar'},
+    'jugar':    {'cat': 'uso_final', 'accion': 'jugar'},
+    'programar':{'cat': 'uso_final', 'accion': 'programar'},
 
     # --- CONJUNCIONES Y PREPOSICIONES ---
-    'y': {'cat': 'conjuncion'},
-    'con': {'cat': 'preposicion'},
+    'y':    {'cat': 'conjuncion'},
+    'con':  {'cat': 'preposicion'},
     'para': {'cat': 'preposicion'},
-    'más': {'cat': 'conjuncion'}
+    'más':  {'cat': 'conjuncion'}
+}
+
+
+def _normalizar_clave(texto):
+    texto = texto.lower()
+    texto = unicodedata.normalize('NFD', texto)
+    texto = ''.join(c for c in texto if unicodedata.category(c) != 'Mn')
+    texto = re.sub(r'[^\w\s]', '', texto)
+    return texto.strip()
+
+# Normalizar léxico
+lexico = {_normalizar_clave(k): v for k, v in lexico.items()}
+
+# Normalizar terminales en la gramática
+gramatica = {
+    simbolo: [
+        [_normalizar_clave(token) if isinstance(token, str) and token[0].islower() else token
+         for token in produccion]
+        for produccion in producciones
+    ]
+    for simbolo, producciones in gramatica.items()
 }

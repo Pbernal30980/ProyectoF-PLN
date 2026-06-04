@@ -13,12 +13,12 @@ if __name__ == "__main__":
         "busco un teléfono samsung y xiaomi",
         "quiero el teléfono rápidos",
         "necesito el celular con snapdragon gama baja",
-        "un buen procesador para jugar",
+        "algún buen procesador para jugar",
         "recomiéndame el",
     ]
     
     
-    casos_a_ejecutar = (1,3)
+    casos_a_ejecutar = (9,12)
     
     if casos_a_ejecutar is None:
         indices = range(len(casos_de_prueba))
