@@ -29,15 +29,15 @@ def manejar_fuera_de_dominio(tokens):
     
     amor = {"amor", "novia", "novio", "pareja", "amar", "corazon", "vida"}
     comida = {"pizza", "hamburguesa", "comida", "almuerzo", "restaurante", "hambre"}
-    filosofia = {"existencia", "dios", "creo", "humano", "sentimientos", "siento"}
+    filosofia = {"existencia", "dios", "creo", "humano", "sentimientos", "siento", "vivir"}
     
     if palabras_clave.intersection(amor):
-        return ("🤖 Como IA experta en hardware de la Universidad del Valle, el único 'amor' "
+        return ("🤖 Como recomendador experto en hardware de telefonos, el único 'amor' "
                 "que entiendo es el que le tengo a un Snapdragon bien refrigerado. "
                 "¡Pero te aseguro que un celular gama alta te ayudará a responder más rápido en Tinder!")
         
     if palabras_clave.intersection(comida):
-        return ("🤖 ¡Uff, una pizza suena excelente! Pero mi sistema operativo solo digiere "
+        return ("🤖 ¡Uff, una comida suena excelente! Pero mi sistema operativo solo digiere "
                 "datos. Si me dices tu presupuesto, te busco un celular genial para que "
                 "pidas todas las pizzas que quieras por delivery.")
                 
