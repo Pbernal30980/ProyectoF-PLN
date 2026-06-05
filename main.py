@@ -1,9 +1,10 @@
+# main.py
 from gramatica import lexico, gramatica
 from utils import lexer, imprimir_arbol
 from parser_dcg import obtener_definiciones, parse_abstracto, obtener_arbol_parcial
 from ambiguedad import resolver_ambiguedad
 from atn import recorrer_atn
-
+from generador_respuestas import manejar_fuera_de_dominio, generar_recomendacion
 
 # ============================================================
 # ORQUESTADOR PRINCIPAL
@@ -12,23 +13,25 @@ from atn import recorrer_atn
 def parse_oracion(tokens):
     """
     Pipeline completo:
-      1. Pre-validación léxica
-      2. Parser DCG  → uno o más árboles válidos
-      3. AF          → selecciona árbol ganador si hay ambigüedad
-      4. ATN         → recorre el árbol y extrae registros semánticos
+      1. Pre-validación léxica (Desvío de dominio)
+      2. Parser DCG          → uno o más árboles válidos
+      3. AF                  → selecciona árbol ganador si hay ambigüedad
+      4. ATN                 → recorre el árbol y extrae registros semánticos
+      5. Recomendador        → Consulta la BD simulada y responde al usuario
     """
     # ── 1. Pre-validación léxica ─────────────────────────────
+    tokens_desconocidos = []
     for token in tokens:
         en_lexico    = obtener_definiciones(token) != []
-        en_gramatica = any(
-            token in prod
-            for prods in gramatica.values()
-            for prod in prods
-        )
+        en_gramatica = any(token in prod for prods in gramatica.values() for prod in prods)
         if not en_lexico and not en_gramatica:
-            print(f"[Error Léxico] La palabra '{token}' no existe "
-                  "en el diccionario ni en las reglas.")
-            return None
+            tokens_desconocidos.append(token)
+        
+    # Si hay palabras que no pertenecen al ecosistema, interceptamos
+    if tokens_desconocidos:
+        respuesta_out = manejar_fuera_de_dominio(tokens)
+        print(f"\n{respuesta_out}")
+        return None
 
     # ── 2. Parser DCG ────────────────────────────────────────
     tracker      = {'max_pos': 0, 'errores': set()}
@@ -40,12 +43,19 @@ def parse_oracion(tokens):
 
     # Fallo DCG
     if not dags_validos:
+        # Evaluamos si falló por estructura pero sigue siendo un tema ajeno
+        respuesta_out = manejar_fuera_de_dominio(tokens)
+        if "🤖" in respuesta_out and not respuesta_out.startswith("🤖 Hum... Temo"):
+            print(f"\n{respuesta_out}")
+            return None
+        
         print("[Error Estructural o de Concordancia] detectado.\n")
         arbol_parcial, pos_alcanzada = obtener_arbol_parcial(tokens)
         print("--- ÁRBOL PARCIAL ALCANZADO ANTES DEL ERROR ---")
         imprimir_arbol(arbol_parcial)
         tokens_sobrantes = tokens[pos_alcanzada:]
         print(f"\n[!] Tokens sin procesar a partir del fallo: {tokens_sobrantes}\n")
+        
         print("[MOTIVO DEL FALLO]:")
         if tracker['errores']:
             for err in tracker['errores']:
@@ -60,8 +70,7 @@ def parse_oracion(tokens):
 
     # ── 3. AF — resolución de ambigüedad ────────────────────
     if len(dags_validos) > 1:
-        print(f"[AF] Ambigüedad detectada: {len(dags_validos)} árboles válidos. "
-              "Iniciando AF...\n")
+        print(f"[AF] Ambigüedad detectada: {len(dags_validos)} árboles válidos. Iniciando AF...\n")
         arbol_final, traza_af, puntajes = resolver_ambiguedad(dags_validos)
         print("\n--- TRAZA DEL AUTÓMATA FINITO ---")
         for linea in traza_af:
@@ -80,6 +89,12 @@ def parse_oracion(tokens):
     for clave, valor in contexto.items():
         print(f"   GETR {clave:15s} = {valor!r}")
 
+    # ── 5. CONSULTA Y RESPUESTA FINAL (SISTEMA EXPERTO) ──────
+    respuesta_final = generar_recomendacion(contexto)
+    print("\n" + "=" * 54)
+    print(respuesta_final)
+    print("=" * 54)
+
     return arbol_final, contexto
 
 
@@ -94,7 +109,7 @@ def analizar_oracion(oracion):
     resultado = parse_oracion(tokens)
 
     if resultado is None:
-        print("\nResultado: None (la oración no es válida)")
+        print("\nResultado: None (la oración no fue procesada por el ecosistema)")
         return None
 
     arbol_final, contexto = resultado
@@ -134,6 +149,13 @@ CASOS_DE_PRUEBA = [
     "algún buen procesador para jugar",
     # 11 — error estructural: NP incompleto (falta sujeto tras artículo)
     "recomiéndame el",
+    # --- NUEVOS CASOS: FUERA DE DOMINIO Y RESPUESTAS RECIENTES ---
+    # 12 — fuera de dominio: amor
+    "como puedo encontrar el amor de mi vida",
+    # 13 — fuera de dominio: comida
+    "quiero pedir una pizza grande",
+    # 14 — fuera de dominio: genérico filosófico
+    "cual es el sentido de la existencia"
 ]
 
 

@@ -1,5 +1,45 @@
 from gramatica import lexico
 
+_USO_CATS = {'verbo', 'juego', 'uso'}
+
+def _es_token_de_uso(token):
+    """True si el token léxico es un verbo de uso, juego o uso final."""
+    lex = lexico.get(token, {})
+    if isinstance(lex, list):
+        return any(d.get('cat') in _USO_CATS for d in lex)
+    return lex.get('cat') in _USO_CATS
+
+def _terminales_en_orden(arbol):
+    """Devuelve la lista plana de terminales del árbol en orden de aparición."""
+    out = []
+    def visit(nodo):
+        if not isinstance(nodo, dict):
+            return
+        if 'terminal' in nodo:
+            out.append(nodo['terminal'])
+            return
+        for k, hijos in nodo.items():
+            if k == '_rasgos_heredados':
+                continue
+            if isinstance(hijos, list):
+                for h in hijos:
+                    visit(h)
+    visit(arbol)
+    return out
+
+def _extraer_usos_implicitos(arbol):
+    """Busca la secuencia 'para' + token de uso y devuelve los usos encontrados.
+
+    Caso típico: 'busco mucha memoria para jugar' → 'jugar'.
+    """
+    terminales = _terminales_en_orden(arbol)
+    usos = []
+    for i, t in enumerate(terminales):
+        if t == 'para' and i + 1 < len(terminales) \
+                and _es_token_de_uso(terminales[i + 1]):
+            usos.append(terminales[i + 1])
+    return usos
+
 # ── Helpers privados ─────────────────────────────────────────
 
 def _buscar_nodo(arbol, nombre):
@@ -53,8 +93,12 @@ def _clasificar_modificador(nodo_modif):
         for tipo in ['MARCA', 'GAMA', 'ESPECIFICACION_TEC', 'ADJETIVO']:
             sub = _buscar_nodo(hijo, tipo)
             if sub:
-                return {'tipo': tipo.lower(),
-                        'valor': ' '.join(_extraer_terminales(sub))}
+                terminales = _extraer_terminales(sub)
+                if tipo == 'GAMA':
+                    valor = terminales[-1] if terminales else ''
+                else:
+                    valor = ' '.join(terminales)
+                return {'tipo': tipo.lower(), 'valor': valor}
     return None
 
 def _recolectar_modificadores(nodo_modifs):
@@ -71,6 +115,27 @@ def _recolectar_modificadores(nodo_modifs):
         if 'MODIFICADORES' in hijo:
             resultado.extend(_recolectar_modificadores(hijo))
     return resultado
+
+def _recolectar_adjetivos_sueltos(nodo_req):
+    """Captura ADJETIVOS que el parser DCG puso como hijos directos de
+    REQUERIMIENTO (producción: ARTICULO + ADJETIVO + SUJETO + MODIFICADORES),
+    y que de otro modo quedarían fuera del contexto semántico.
+    """
+    adjetivos = []
+    if not isinstance(nodo_req, dict):
+        return adjetivos
+    for hijo in nodo_req.get('REQUERIMIENTO', []):
+        if not isinstance(hijo, dict):
+            continue
+        if 'ADJETIVO' in hijo and 'MODIFICADORES' not in hijo:
+            sub = _buscar_nodo(hijo, 'ADJETIVO')
+            if sub:
+                terminales = _extraer_terminales(sub)
+                adjetivos.append({
+                    'tipo': 'adjetivo',
+                    'valor': terminales[-1] if terminales else ''
+                })
+    return adjetivos
 
 # ── Motor ATN ────────────────────────────────────────────────
 
@@ -165,10 +230,21 @@ def recorrer_atn(arbol):
     )
     estado = transitar(estado, "q2c_en_modif", "arco MODIFICADORES")
     if nodo_modifs:
-        setr('modificadores', _recolectar_modificadores(nodo_modifs))
+        mods = _recolectar_modificadores(nodo_modifs)
     else:
-        setr('modificadores', [])
+        mods = []
         traza_atn.append("      (sin modificadores — POP directo)")
+
+    # Capturar también ADJETIVOS sueltos en REQUERIMIENTO
+    # (caso P8: ARTICULO + ADJETIVO + SUJETO + MODIFICADORES)
+    adjs_sueltos = _recolectar_adjetivos_sueltos(nodo_req)
+    if adjs_sueltos:
+        mods = adjs_sueltos + mods
+        traza_atn.append(
+            f"      ADJETIVOS sueltos en REQUERIMIENTO: {adjs_sueltos}"
+        )
+
+    setr('modificadores', mods)
 
     # q3: COMPLEMENTO
     nodo_compl = next(
@@ -184,8 +260,16 @@ def recorrer_atn(arbol):
         else:
             setr('complemento', _extraer_terminales(nodo_compl))
     else:
-        estado = transitar(estado, "q3_en_compl", "COMPLEMENTO ausente (POP)")
-        setr('complemento', None)
+        # Fallback: detectar 'para + VERBO/JUEGO' anidado en MODIFICADORES
+        # (p.ej. "busco mucha memoria para jugar" → uso='jugar')
+        usos_implicitos = _extraer_usos_implicitos(arbol)
+        if usos_implicitos:
+            estado = transitar(estado, "q3_en_compl",
+                               f"COMPLEMENTO inferido: {' '.join(usos_implicitos)}")
+            setr('complemento', ' '.join(usos_implicitos))
+        else:
+            estado = transitar(estado, "q3_en_compl", "COMPLEMENTO ausente (POP)")
+            setr('complemento', None)
 
     transitar(estado, "q4_aceptado", "árbol recorrido completamente")
     return contexto, traza_atn

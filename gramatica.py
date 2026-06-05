@@ -86,8 +86,8 @@ gramatica = {
         ["ALMACENAMIENTO"]
     ],
     "ADJETIVO": [
-        ["rápido"], ["potente"], ["veloz"], ["eficiente"], 
-        ["fluido"], ["bueno"], ["buen"], ["buena"]
+        ["rápido"], ["rápida"], ["potente"], ["veloz"], ["eficiente"],
+        ["fluido"], ["fluida"], ["bueno"], ["buen"], ["buena"]
     ],
 
     "VERBO":[
