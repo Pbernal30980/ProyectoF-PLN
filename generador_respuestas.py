@@ -135,10 +135,10 @@ def generar_recomendacion(contexto):
         opciones_a_mostrar = mejores_opciones[:2]
 
     # Construir respuesta con las mejores opciones encontradas
-    respuesta = "🤖 **Aquí tienes mis recomendaciones basadas en tu análisis semántico:**\n\n"
+    respuesta = "😁 Aquí tienes mis recomendaciones basadas en tu análisis semántico:\n\n"
     for i, (disp, pts) in enumerate(opciones_a_mostrar):
-        respuesta += f"{i+1}. **{disp['nombre']}** (Gama {disp['gama'].capitalize()})\n"
-        respuesta += f"   • ⚙️ **Hardware:** Procesador {disp['procesador'].upper()} | {disp['ram'].upper()} RAM | {disp['almacenamiento'].upper()}\n"
-        respuesta += f"   • 📝 **Por qué te conviene:** {disp['descripcion']}\n\n"
+        respuesta += f"{i+1}. {disp['nombre']} (Gama {disp['gama'].capitalize()}) ⭐\n"
+        respuesta += f"   • Su Hardware: Procesador {disp['procesador'].upper()} | {disp['ram'].upper()} RAM | {disp['almacenamiento'].upper()}\n"
+        respuesta += f"   • Te diré las razónes: {disp['descripcion']}\n\n"
         
     return respuesta

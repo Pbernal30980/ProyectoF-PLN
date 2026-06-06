@@ -1,4 +1,3 @@
-# main.py
 from gramatica import lexico, gramatica
 from utils import lexer, imprimir_arbol
 from parser_dcg import obtener_definiciones, parse_abstracto, obtener_arbol_parcial
@@ -10,6 +9,21 @@ from generador_respuestas import manejar_fuera_de_dominio, generar_recomendacion
 # ORQUESTADOR PRINCIPAL
 # ============================================================
 
+def _es_token_de_dominio(token):
+    """
+    True si el token pertenece al dominio tecnológico aunque sea una forma
+    morfológica incorrecta (plural, género erróneo, etc.).
+    Consulta el léxico normalizado y los literales de la gramática.
+    """
+    if obtener_definiciones(token):
+        return True
+    for prods in gramatica.values():
+        for prod in prods:
+            if token in prod:
+                return True
+    return False
+
+
 def parse_oracion(tokens):
     """
     Pipeline completo:
@@ -20,14 +34,10 @@ def parse_oracion(tokens):
       5. Recomendador        → Consulta la BD simulada y responde al usuario
     """
     # ── 1. Pre-validación léxica ─────────────────────────────
-    tokens_desconocidos = []
-    for token in tokens:
-        en_lexico    = obtener_definiciones(token) != []
-        en_gramatica = any(token in prod for prods in gramatica.values() for prod in prods)
-        if not en_lexico and not en_gramatica:
-            tokens_desconocidos.append(token)
-        
-    # Si hay palabras que no pertenecen al ecosistema, interceptamos
+    # Solo interceptamos como "fuera de dominio" si hay tokens que no
+    # pertenecen en absoluto al vocabulario tecnológico.
+    tokens_desconocidos = [t for t in tokens if not _es_token_de_dominio(t)]
+
     if tokens_desconocidos:
         respuesta_out = manejar_fuera_de_dominio(tokens)
         print(f"\n{respuesta_out}")
@@ -43,19 +53,19 @@ def parse_oracion(tokens):
 
     # Fallo DCG
     if not dags_validos:
-        # Evaluamos si falló por estructura pero sigue siendo un tema ajeno
+        # Segundo intento: ¿es un tema claramente ajeno al dominio?
         respuesta_out = manejar_fuera_de_dominio(tokens)
         if "🤖" in respuesta_out and not respuesta_out.startswith("🤖 Hum... Temo"):
             print(f"\n{respuesta_out}")
             return None
-        
+
         print("[Error Estructural o de Concordancia] detectado.\n")
         arbol_parcial, pos_alcanzada = obtener_arbol_parcial(tokens)
         print("--- ÁRBOL PARCIAL ALCANZADO ANTES DEL ERROR ---")
         imprimir_arbol(arbol_parcial)
         tokens_sobrantes = tokens[pos_alcanzada:]
         print(f"\n[!] Tokens sin procesar a partir del fallo: {tokens_sobrantes}\n")
-        
+
         print("[MOTIVO DEL FALLO]:")
         if tracker['errores']:
             for err in tracker['errores']:
@@ -80,42 +90,37 @@ def parse_oracion(tokens):
         arbol_final = dags_validos[0]
 
     # ── 4. ATN — recorrido semántico ─────────────────────────
-    print("\n--- TRAZA ATN ---")
+    #print("\n--- TRAZA ATN ---")
     contexto, traza_atn = recorrer_atn(arbol_final)
-    for linea in traza_atn:
-        print(linea)
-
-    print("\n--- REGISTROS SEMÁNTICOS (GETR) ---")
-    for clave, valor in contexto.items():
-        print(f"   GETR {clave:15s} = {valor!r}")
+    #for linea in traza_atn:
+    #    print(linea)
+    #print("\n--- REGISTROS SEMÁNTICOS (GETR) ---")
+    #for clave, valor in contexto.items():
+    #    print(f"   GETR {clave:15s} = {valor!r}")
 
     # ── 5. CONSULTA Y RESPUESTA FINAL (SISTEMA EXPERTO) ──────
     respuesta_final = generar_recomendacion(contexto)
-    print("\n" + "=" * 54)
+    print("\n" + "-" * 54)
     print(respuesta_final)
-    print("=" * 54)
-
+    #print("=" * 54)
     return arbol_final, contexto
 
 
 def analizar_oracion(oracion):
     """Punto de entrada público. Tokeniza, analiza e imprime resultado."""
     tokens = lexer(oracion)
-    print(f"\n{'=' * 54}")
-    print(f"Frase : '{oracion}'")
-    print(f"Tokens: {tokens}")
-    print(f"{'=' * 54}")
-
+    #print(f"\n{'=' * 54}")
+    #print(f"Frase : '{oracion}'")
+    #(f"Tokens: {tokens}")
+    #print(f"{'=' * 54}")
     resultado = parse_oracion(tokens)
-
     if resultado is None:
         print("\nResultado: None (la oración no fue procesada por el ecosistema)")
         return None
-
     arbol_final, contexto = resultado
-    print(f"\n[ÉXITO] Árbol válido seleccionado\n")
-    print("--- ÁRBOL DCG FINAL ---")
-    imprimir_arbol(arbol_final)
+    #print(f"\n[ÉXITO] Árbol válido seleccionado\n")
+    #print("--- ÁRBOL DCG FINAL ---")
+    #imprimir_arbol(arbol_final)
     print()
     return arbol_final, contexto
 
@@ -123,7 +128,6 @@ def analizar_oracion(oracion):
 # ============================================================
 # CASOS DE PRUEBA
 # ============================================================
-
 CASOS_DE_PRUEBA = [
     # 0  — válida: requerimiento simple con modificador de gama
     "quiero un celular gama media",
@@ -149,7 +153,6 @@ CASOS_DE_PRUEBA = [
     "algún buen procesador para jugar",
     # 11 — error estructural: NP incompleto (falta sujeto tras artículo)
     "recomiéndame el",
-    # --- NUEVOS CASOS: FUERA DE DOMINIO Y RESPUESTAS RECIENTES ---
     # 12 — fuera de dominio: amor
     "como puedo encontrar el amor de mi vida",
     # 13 — fuera de dominio: comida
@@ -188,7 +191,6 @@ def ejecutar_casos(selector=None):
 # ============================================================
 # MODO INTERACTIVO
 # ============================================================
-
 BANNER = """
 ╔══════════════════════════════════════════════════════╗
 ║        Analizador de Requerimientos de Dispositivos  ║
@@ -196,7 +198,6 @@ BANNER = """
 ╚══════════════════════════════════════════════════════╝
   Escribe una frase para analizarla, por ejemplo:
     > quiero un celular gama alta para jugar
-
   Comandos especiales:
     casos            → ejecutar todos los casos de prueba
     caso <n>         → ejecutar el caso número n
@@ -215,13 +216,6 @@ def _mostrar_casos():
 
 
 def _parsear_comando_casos(partes):
-    """
-    Interpreta las variantes del comando 'casos':
-      casos          → None  (todos)
-      caso  <n>      → int n
-      casos <n>      → int n
-      casos <n> <m>  → tuple (n, m)
-    """
     if len(partes) == 1:
         return None
     try:
@@ -236,42 +230,29 @@ def _parsear_comando_casos(partes):
 
 def modo_interactivo():
     print(BANNER)
-
     while True:
         try:
             entrada = input("  > ").strip()
         except (EOFError, KeyboardInterrupt):
             print("\n\n  Hasta luego.\n")
             break
-
         if not entrada:
             continue
-
         partes  = entrada.lower().split()
         comando = partes[0]
-
-        # ── Salir ────────────────────────────────────────────
         if comando in ("salir", "exit", "quit"):
             print("\n  Hasta luego.\n")
             break
-
-        # ── Ayuda ────────────────────────────────────────────
         elif comando in ("ayuda", "help"):
             print(BANNER)
-
-        # ── Listar casos ─────────────────────────────────────
         elif comando == "listar":
             _mostrar_casos()
-
-        # ── Ejecutar casos de prueba ─────────────────────────
         elif comando in ("casos", "caso"):
             selector = _parsear_comando_casos(partes)
             if selector == "error":
                 print("  Uso: casos | caso <n> | casos <n> <m>\n")
             else:
                 ejecutar_casos(selector)
-
-        # ── Análisis de frase libre ──────────────────────────
         else:
             analizar_oracion(entrada)
 
@@ -279,6 +260,5 @@ def modo_interactivo():
 # ============================================================
 # PUNTO DE ENTRADA
 # ============================================================
-
 if __name__ == "__main__":
     modo_interactivo()
