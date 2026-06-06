@@ -1,8 +1,10 @@
 # Analizador de Requerimientos de Dispositivos — DCG + ATN
+ — *Universidad del Valle, Procesamiento de Lenguaje Natural*.
+ 
+Presentado por Pedro Bernal y Santiago Reyes
 
-Sistema de procesamiento de lenguaje natural para interpretar requerimientos de dispositivos tecnológicos (teléfonos, procesadores, memoria, etc.) y generar recomendaciones de compra.
+Este es un sistema de procesamiento de lenguaje natural para interpretar requerimientos de dispositivos tecnológicos (teléfonos, procesadores, memoria, etc.) y generar recomendaciones de compra al usuario.
 
-Proyecto académico — *Universidad del Valle, Procesamiento de Lenguaje Natural*.
 
 ## Requisitos
 
